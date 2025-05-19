@@ -33,3 +33,8 @@ At start, the game tries to load a saved game.
 Happy snake hunting! :)
 
 
+--------------------------------------------------------------
+
+![tSnakes](https://github.com/JSettler/tSnakes/blob/master/tSnakes.png)
+
+
