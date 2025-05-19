@@ -59,14 +59,17 @@
 
 // Helper function for bot AI to check if a target tile is safe to move to
 bool isSafeBotMove(sf::Vector2i targetPos, int botSelfID, bool isBotClaiming, const std::vector<sf::Vector2i>& botTail, const std::vector<std::vector<Tile>>& mapRef) {
+    // Check map boundaries (uses G_CONFIG from common.h, defined in common.cpp)
     if (targetPos.x < 0 || targetPos.x >= G_CONFIG.mapWidthTiles ||
         targetPos.y < 0 || targetPos.y >= G_CONFIG.mapHeightTiles) {
         return false; 
     }
+
+    // Check for collision with own tail
     if (isBotClaiming && !botTail.empty()) {
         for (const auto& tailSegment : botTail) {
             if (tailSegment == targetPos) {
-                return false; 
+                return false; // Target is part of the existing tail
             }
         }
     }
@@ -79,7 +82,7 @@ Bot::Bot(int bot_id, sf::Color primary_active_c, sf::Color safe_head_c, sf::Vect
       activeColor(primary_active_c), 
       safeHeadColor(safe_head_c),
       currentDirection(Direction::NONE), 
-      isMovingToTarget(false), // Initialize to false
+      isMovingToTarget(false),
       isClaiming(false),
       alive(true),
       decisionTimer(0.0f), 
@@ -92,7 +95,7 @@ Bot::Bot(int bot_id, sf::Color primary_active_c, sf::Color safe_head_c, sf::Vect
     
     territoryColor = sf::Color(activeColor.r / 2, activeColor.g / 2, activeColor.b / 2);
     visualPos = sf::Vector2f(gridPos.x * TILE_SIZE + HEAD_MARGIN, gridPos.y * TILE_SIZE + HEAD_MARGIN);
-    targetVisualPos = visualPos; // Initialize target to current position
+    targetVisualPos = visualPos; 
     headSprite.setPosition(visualPos);
     initializeTextures(); 
 }
@@ -107,10 +110,12 @@ void Bot::initializeTextures() {
 
 void Bot::die(std::vector<std::vector<Tile>>& gameMapRef) {
     if (!alive) return; 
-    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " (EntityID for map: " << id << ") has died." << std::endl;
+
+    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " has died." << std::endl;
     alive = false; 
     isClaiming = false; 
     tail.clear();
+
     for (int y = 0; y < G_CONFIG.mapHeightTiles; ++y) { 
         for (int x = 0; x < G_CONFIG.mapWidthTiles; ++x) { 
             if (gameMapRef[x][y].baseOwner == TileBaseOwner::BOT && gameMapRef[x][y].entityID == id) {
@@ -119,14 +124,18 @@ void Bot::die(std::vector<std::vector<Tile>>& gameMapRef) {
             }
         }
     }
+    // For instant respawn, no timer logic needed here. Main.cpp will trigger respawn.
 }
 
 void Bot::respawn(std::vector<std::vector<Tile>>& gameMapRef, sf::Vector2i newStartPos) {
-    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " respawning at (" << newStartPos.x << "," << newStartPos.y << ")." << std::endl;
-    gridPos = newStartPos; initialSpawnPoint = newStartPos; loopStartPoint = newStartPos;    
+    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " AGGRESSIVELY respawning at (" << newStartPos.x << "," << newStartPos.y << ")." << std::endl;
+    
+    gridPos = newStartPos;
+    initialSpawnPoint = newStartPos; 
+    loopStartPoint = newStartPos;    
     visualPos = sf::Vector2f(gridPos.x * TILE_SIZE + HEAD_MARGIN, gridPos.y * TILE_SIZE + HEAD_MARGIN);
     headSprite.setPosition(visualPos);
-    
+
     alive = true; 
     isClaiming = false;
     tail.clear();
@@ -135,20 +144,28 @@ void Bot::respawn(std::vector<std::vector<Tile>>& gameMapRef, sf::Vector2i newSt
     stepsInCurrentDirection = 0;
     loopLegCounter = 0;
     
-    isMovingToTarget = false;         // <<< CRITICAL RESET
-    targetVisualPos = visualPos;      // <<< CRITICAL RESET
+    isMovingToTarget = false;         
+    targetVisualPos = visualPos;      
     
     int botRespawnTerritorySize = 5; 
     for (int r = -botRespawnTerritorySize / 2; r <= botRespawnTerritorySize / 2; ++r) {
         for (int c = -botRespawnTerritorySize / 2; c <= botRespawnTerritorySize / 2; ++c) {
-            int tileX = gridPos.x + c; int tileY = gridPos.y + r;
-            if (tileX >= 0 && tileX < G_CONFIG.mapWidthTiles && tileY >= 0 && tileY < G_CONFIG.mapHeightTiles) {
+            int tileX = gridPos.x + c;
+            int tileY = gridPos.y + r;
+            if (tileX >= 0 && tileX < G_CONFIG.mapWidthTiles && 
+                tileY >= 0 && tileY < G_CONFIG.mapHeightTiles) {
+                
+                if (gameMapRef[tileX][tileY].baseOwner == TileBaseOwner::PLAYER && gameMapRef[tileX][tileY].entityID == PLAYER_ENTITY_ID) {
+                    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " respawn overwriting player territory at (" << tileX << "," << tileY << ")" << std::endl;
+                } else if (gameMapRef[tileX][tileY].baseOwner == TileBaseOwner::BOT && gameMapRef[tileX][tileY].entityID != id) {
+                     if (G_CONFIG.debugMode) std::cout << "Bot " << id << " respawn overwriting territory of bot " << gameMapRef[tileX][tileY].entityID << " at (" << tileX << "," << tileY << ")" << std::endl;
+                }
                 gameMapRef[tileX][tileY].baseOwner = TileBaseOwner::BOT;
                 gameMapRef[tileX][tileY].entityID = id;
             }
         }
     }
-    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " territory re-established." << std::endl;
+    if (G_CONFIG.debugMode) std::cout << "Bot " << id << " territory forcefully re-established." << std::endl;
 }
 
 void Bot::update(float deltaTime, 
@@ -208,13 +225,12 @@ void Bot::update(float deltaTime,
                 currentAIState = AIState::MAKING_LOOP_LEG1; 
                 stepsInCurrentDirection = 0; loopLegCounter = 0;
                 loopStartPoint = gridPos; 
-                currentDirection = Direction::NONE; // Force AI to pick a new direction for the loop start
-                isMovingToTarget = false;         // <<< ENSURE this is false before AI picks first loop direction
+                currentDirection = Direction::NONE; 
+                isMovingToTarget = false;         
                 
                 bool initialDirFound = false;
                 Direction potentialInitialDirs[] = {Direction::UP, Direction::DOWN, Direction::LEFT, Direction::RIGHT};
                 std::random_shuffle(std::begin(potentialInitialDirs), std::end(potentialInitialDirs));
-
                 for(Direction dir : potentialInitialDirs) {
                     sf::Vector2i nextTestPos = gridPos;
                     if (dir == Direction::UP) nextTestPos.y--; else if (dir == Direction::DOWN) nextTestPos.y++;
@@ -312,21 +328,19 @@ void Bot::update(float deltaTime,
                 std::vector<Direction> preferredDirs;
                 if (dx_home > 0) preferredDirs.push_back(Direction::RIGHT); else if (dx_home < 0) preferredDirs.push_back(Direction::LEFT);
                 if (dy_home > 0) preferredDirs.push_back(Direction::DOWN); else if (dy_home < 0) preferredDirs.push_back(Direction::UP);
-                if (preferredDirs.empty() && (dx_home != 0 || dy_home != 0)) { // If on same row/col but not at target, pick one
+                if (preferredDirs.empty() && (dx_home != 0 || dy_home != 0)) { 
                     if (dx_home != 0) preferredDirs.push_back((dx_home > 0) ? Direction::RIGHT : Direction::LEFT);
                     if (dy_home != 0) preferredDirs.push_back((dy_home > 0) ? Direction::DOWN : Direction::UP);
                 }
-                
                 std::random_shuffle(preferredDirs.begin(), preferredDirs.end()); 
-
                 for(Direction d : preferredDirs) { 
                     sf::Vector2i nextTestPos = gridPos;
                     if (d == Direction::UP) nextTestPos.y--; else if (d == Direction::DOWN) nextTestPos.y++;
                     else if (d == Direction::LEFT) nextTestPos.x--; else if (d == Direction::RIGHT) nextTestPos.x++;
                     if (isSafeBotMove(nextTestPos, id, isClaiming, tail, gameMapRef)) {chosenDirThisFrame = d; break;}
                 }
-                if (chosenDirThisFrame == Direction::NONE) { // If preferred are blocked, try any random safe
-                    std::random_shuffle(std::begin(homeDirs), std::end(homeDirs)); // Re-use and re-shuffle
+                if (chosenDirThisFrame == Direction::NONE) { 
+                    std::random_shuffle(std::begin(homeDirs), std::end(homeDirs)); 
                     for(Direction d : homeDirs) { 
                         sf::Vector2i nextTestPos = gridPos;
                         if (d == Direction::UP) nextTestPos.y--; else if (d == Direction::DOWN) nextTestPos.y++;
@@ -352,7 +366,7 @@ void Bot::update(float deltaTime,
                 }
                 if (chosenDirThisFrame == Direction::NONE) chosenDirThisFrame = originalChosenDir; 
             }
-            if (tail.size() > (G_CONFIG.mapWidthTiles + G_CONFIG.mapHeightTiles) / 2 ) { // Adjusted safety limit
+            if (tail.size() > (G_CONFIG.mapWidthTiles + G_CONFIG.mapHeightTiles) / 2 ) { 
                  currentAIState = AIState::EXPLORING;
                  if (G_CONFIG.debugMode) std::cout << "Bot " << id << " tail too long while returning, resetting to EXPLORING." << std::endl;
             }
@@ -380,7 +394,7 @@ void Bot::update(float deltaTime,
                 if (G_CONFIG.debugMode) std::cout << "Bot " << id << " final chosen dir (" << static_cast<int>(chosenDirThisFrame) << ") was unsafe. Resetting AI." << std::endl;
                 currentDirection = Direction::NONE; 
                 currentAIState = AIState::EXPLORING; 
-                stepsInCurrentDirection = 1000; // Force new decision
+                stepsInCurrentDirection = 1000; 
             }
         } else { 
             if (G_CONFIG.debugMode) std::cout << "Bot " << id << " is STUCK (no safe move found after AI logic). Initiating self-destruct." << std::endl;

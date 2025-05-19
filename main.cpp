@@ -538,7 +538,8 @@ int main(int argc, char* argv[]) {
                     bot.update(deltaTime, gameMap, playerTail, isPlayerClaiming, playerGridPos, bots); 
 
                     if (!bot.alive) { // Bot died during its own update (e.g. self-collision, or AI suicide if stuck)
-                        if (G_CONFIG.debugMode) std::cout << "Main: Bot " << bot.id << " died. Initiating instant respawn." << std::endl;
+
+
                         sf::Vector2i newBotSpawnPos;
                         bool spotFoundForRespawn = false;
                         int respawnAttempts = 0;
@@ -564,12 +565,12 @@ int main(int argc, char* argv[]) {
                         }
                         if (spotFoundForRespawn) {
                             bot.respawn(gameMap, newBotSpawnPos); 
-                        } else { 
-                            if (G_CONFIG.debugMode) std::cout << "Main: Could not find clear spot for bot " << bot.id << " respawn. Bot remains dead for now." << std::endl; 
-                        }
+                        } 
+
+
                     } else { // Bot is still alive after its update, process its potential claim
                         if (!bot.isClaiming && !bot.tail.empty()) { // Bot just completed a trail
-                            if (G_CONFIG.debugMode) std::cout << "Main: Processing Bot " << bot.id << " territory claim. Tail size: " << bot.tail.size() << std::endl;
+                            // if (G_CONFIG.debugMode) std::cout << "Main: Processing Bot " << bot.id << " territory claim. Tail size: " << bot.tail.size() << std::endl;
                             int botTrailLength = bot.tail.size();
                             
                             for (const auto& botTailPos : bot.tail) { // Convert tail to trail
@@ -580,17 +581,48 @@ int main(int argc, char* argv[]) {
                             }
                             
                             if (botTrailLength > 2 && botTrailLength < 200) { // Bot Flood Fill
-                                if (G_CONFIG.debugMode) std::cout << "Bot " << bot.id << " attempting flood fill..." << std::endl;
+                                // if (G_CONFIG.debugMode) std::cout << "Bot " << bot.id << " attempting flood fill..." << std::endl;
                                 findAndFillEnclosedAreas(bot.tail, bot.gridPos, bot.currentDirection, TileBaseOwner::BOT, bot.id); 
                             } else if (botTrailLength >= 200) {
-                                if (G_CONFIG.debugMode) std::cout << "Bot " << bot.id << " trail too long (" << botTrailLength << "), no flood fill." << std::endl;
+                                if (false) std::cout << "Bot " << bot.id << " trail too long (" << botTrailLength << "), no flood fill." << std::endl;
                             } else if (botTrailLength > 0) { 
-                                 if (G_CONFIG.debugMode) std::cout << "Bot " << bot.id << " trail too short (" << botTrailLength << ") for fill." << std::endl;
+                                 if (false) std::cout << "Bot " << bot.id << " trail too short (" << botTrailLength << ") for fill." << std::endl;
                             }
                             bot.tail.clear(); 
                         }
                     }
-                } 
+                } else {  // bot was not alive, this block controls the main respawning:
+                // ############################################################################################################################
+
+                        sf::Vector2i newBotSpawnPos;
+                        bool spotFoundForRespawn = false;
+                        int respawnAttempts = 0;
+                        const int maxRespawnAttempts = 150; 
+                        const int botTerritorySizeForRespawn = 5; 
+
+                        while(!spotFoundForRespawn && respawnAttempts < maxRespawnAttempts) {
+                            respawnAttempts++;
+                            newBotSpawnPos = sf::Vector2i(
+                                (rand() % (G_CONFIG.mapWidthTiles - (botTerritorySizeForRespawn + 4))) + (botTerritorySizeForRespawn / 2) + 2, 
+                                (rand() % (G_CONFIG.mapHeightTiles - (botTerritorySizeForRespawn + 4))) + (botTerritorySizeForRespawn / 2) + 2  
+                            );
+                            bool areaClearForRespawn = true;
+                            for (int r_check = -botTerritorySizeForRespawn/2; r_check <= botTerritorySizeForRespawn/2; ++r_check) { 
+                                for (int c_check = -botTerritorySizeForRespawn/2; c_check <= botTerritorySizeForRespawn/2; ++c_check) {
+                                    int checkX = newBotSpawnPos.x + c_check; int checkY = newBotSpawnPos.y + r_check;
+                                    if (checkX<0||checkX>=G_CONFIG.mapWidthTiles||checkY<0||checkY>=G_CONFIG.mapHeightTiles|| gameMap[checkX][checkY].baseOwner != TileBaseOwner::NEUTRAL) 
+                                        { areaClearForRespawn = false; break; }
+                                }
+                                if (!areaClearForRespawn) break;
+                            }
+                            if (areaClearForRespawn) spotFoundForRespawn = true;
+                        }
+                        if (spotFoundForRespawn) {
+                            bot.respawn(gameMap, newBotSpawnPos); 
+                        } 
+
+                // ############################################################################################################################
+                }
             }
             // --- End Bot Update & Respawn / Claiming Logic --- 
 
@@ -606,18 +638,18 @@ int main(int argc, char* argv[]) {
                         if (isPlayerClaiming) { 
                             if (nowOnOwnTerritory) { 
                                 isPlayerClaiming = false; int trailLength = playerTail.size(); 
-                                if (G_CONFIG.debugMode) std::cout << "Player re-entered. Trail: " << trailLength << std::endl;
+                                // if (G_CONFIG.debugMode) std::cout << "Player re-entered. Trail: " << trailLength << std::endl;
                                 for (const auto& tP : playerTail) if (tP.x>=0&&tP.x<G_CONFIG.mapWidthTiles&&tP.y>=0&&tP.y<G_CONFIG.mapHeightTiles) {
                                     gameMap[tP.x][tP.y].baseOwner = TileBaseOwner::PLAYER; gameMap[tP.x][tP.y].entityID = PLAYER_ENTITY_ID;
                                 }
-                                if (trailLength>2 && trailLength<200) { if (G_CONFIG.debugMode) std::cout << "Player Flood Fill..." << std::endl; findAndFillEnclosedAreas(playerTail, playerGridPos, currentDirection, TileBaseOwner::PLAYER, PLAYER_ENTITY_ID); }
-                                else if (trailLength>=200) { if (G_CONFIG.debugMode) std::cout << "Player trail too long." << std::endl; }
-                                else if (trailLength>0) { if (G_CONFIG.debugMode) std::cout << "Player trail too short." << std::endl; }
+                                if (trailLength>2 && trailLength<200) { if (false) std::cout << "Player Flood Fill..." << std::endl; findAndFillEnclosedAreas(playerTail, playerGridPos, currentDirection, TileBaseOwner::PLAYER, PLAYER_ENTITY_ID); }
+                                else if (trailLength>=200) { if (false) std::cout << "Player trail too long." << std::endl; }
+                                else if (trailLength>0) { if (false) std::cout << "Player trail too short." << std::endl; }
                                 playerTail.clear(); 
                             } else { 
                                 bool pSelfCol=false; if(playerTail.size()>2) for(size_t i=0;i<playerTail.size()-1;++i) if(playerTail[i]==playerGridPos){pSelfCol=true;break;}
                                 if(pSelfCol){ 
-                                    if (G_CONFIG.debugMode) std::cout<<"PLAYER SELF COLLISION! GAME OVER."<<std::endl; 
+                                    if (false) std::cout<<"PLAYER SELF COLLISION! GAME OVER."<<std::endl; 
                                     currentGameState=GameState::GAME_OVER; 
                                     timeSurvived = gameRunClock.getElapsedTime() + (gameLoadedSuccessfully ? sf::seconds(loadedSaveData.timeSurvivedSeconds) : sf::Time::Zero);
                                     playerScore = 0; for(int y_s=0;y_s<G_CONFIG.mapHeightTiles;++y_s)for(int x_s=0;x_s<G_CONFIG.mapWidthTiles;++x_s)if(gameMap[x_s][y_s].baseOwner==TileBaseOwner::PLAYER && gameMap[x_s][y_s].entityID == PLAYER_ENTITY_ID)playerScore++;
@@ -631,7 +663,7 @@ int main(int argc, char* argv[]) {
                                 else if(playerTail.empty()||playerTail.back()!=playerGridPos)playerTail.push_back(playerGridPos);
                             }
                         } else { 
-                            if (!nowOnOwnTerritory) { isPlayerClaiming=true; playerTail.clear(); playerTail.push_back(playerGridPos); if (G_CONFIG.debugMode) std::cout<<"Player left, starting tail."<<std::endl;}
+                            if (!nowOnOwnTerritory) { isPlayerClaiming=true; playerTail.clear(); playerTail.push_back(playerGridPos); if (false) std::cout<<"Player left, starting tail."<<std::endl;}
                         }
                         
                         if (currentGameState == GameState::PLAYING) { 
@@ -639,7 +671,7 @@ int main(int argc, char* argv[]) {
                                 if (bot.alive && bot.isClaiming) {
                                     bool pHitBTail=false; for(const auto&bTP:bot.tail)if(playerGridPos==bTP){pHitBTail=true;break;}
                                     if (pHitBTail) { 
-                                        if (G_CONFIG.debugMode) std::cout<<"PLAYER HIT BOT "<<bot.id<<" TAIL! Bot dies."<<std::endl; 
+                                        // if (G_CONFIG.debugMode) std::cout<<"PLAYER HIT BOT "<<bot.id<<" TAIL! Bot dies."<<std::endl; 
                                         bot.die(gameMap); 
                                         sf::Vector2i newBotSpawnPos; bool spotFound=false; int attempts=0; const int maxAtt=100; const int bTSR=5; 
                                         while(!spotFound && attempts < maxAtt){ attempts++;
@@ -649,7 +681,7 @@ int main(int argc, char* argv[]) {
                                             if(areaClear)spotFound=true;
                                         }
                                         if(spotFound) bot.respawn(gameMap, newBotSpawnPos);
-                                        else {if (G_CONFIG.debugMode) std::cout<<"Main: No spot for bot "<<bot.id<<" respawn after player kill. Bot remains dead."<<std::endl; }
+                                        else {if (false) std::cout<<"Main: No spot for bot "<<bot.id<<" respawn after player kill. Bot remains dead."<<std::endl; }
                                     }
                                 }
                             }
@@ -666,7 +698,7 @@ int main(int argc, char* argv[]) {
                             if (currentDirection != Direction::NONE) {
                                 sf::Vector2i tGP=playerGridPos; bool cM=true; 
                                 if(currentDirection==Direction::LEFT)tGP.x--; else if(currentDirection==Direction::RIGHT)tGP.x++; else if(currentDirection==Direction::UP)tGP.y--; else if(currentDirection==Direction::DOWN)tGP.y++; else cM=false; 
-                                if(tGP.x<0||tGP.x>=G_CONFIG.mapWidthTiles||tGP.y<0||tGP.y>=G_CONFIG.mapHeightTiles){cM=false;currentDirection=Direction::NONE;playerWantsToPause=true; if (G_CONFIG.debugMode) std::cout<<"Player hit boundary."<<std::endl;}
+                                if(tGP.x<0||tGP.x>=G_CONFIG.mapWidthTiles||tGP.y<0||tGP.y>=G_CONFIG.mapHeightTiles){cM=false;currentDirection=Direction::NONE;playerWantsToPause=true; if (false) std::cout<<"Player hit boundary."<<std::endl;}
                                 if(cM){targetVisualPos=gridToPixelForHead(tGP);isMovingToTarget=true;nextDirection=Direction::NONE;previousCurrentDirection=currentDirection;}
                             }
                         }
@@ -688,7 +720,7 @@ int main(int argc, char* argv[]) {
                     if (bot.alive) { 
                         for (const auto& playerTailPos : playerTail) {
                             if (bot.gridPos == playerTailPos) {
-                                if (G_CONFIG.debugMode) std::cout << "BOT " << bot.id << " HIT PLAYER'S TAIL! GAME OVER." << std::endl;
+                                // if (G_CONFIG.debugMode) std::cout << "BOT " << bot.id << " HIT PLAYER'S TAIL! GAME OVER." << std::endl;
                                 currentGameState = GameState::GAME_OVER;
                                 timeSurvived = gameRunClock.getElapsedTime() + (gameLoadedSuccessfully ? sf::seconds(loadedSaveData.timeSurvivedSeconds) : sf::Time::Zero);
                                 playerScore = 0; 
